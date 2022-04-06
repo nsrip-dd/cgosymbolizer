@@ -9,6 +9,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <unwind.h>
 
 struct unwind_data {
@@ -56,6 +57,40 @@ unwind(struct _Unwind_Context* context, void* data)
 	return _URC_NO_REASON;
 }
 
+#define CGO_CALL_STACK_SIZE 64
+
+struct cgoCallStack {
+	uintptr_t buf[CGO_CALL_STACK_SIZE];
+};
+
+__thread struct cgoCallStack cstack;
+
+struct cgoTracebackContextType {
+	uintptr_t context;
+};
+
+void cgoContext(void *d) {
+	struct cgoTracebackContextType *p = d;
+	if (p->context != 0) {
+		return;
+	}
+	struct unwind_data ud;
+
+	ud.idx = 0;
+	ud.addrs = cstack.buf;
+	ud.max = CGO_CALL_STACK_SIZE;
+	ud.cfa = 0;
+	_Unwind_Backtrace(unwind, (void*)&ud);
+
+	// The list of addresses terminates at a 0, so make sure there is one.
+	if (ud.idx < 0) {
+		cstack.buf[0] = 0;
+	} else if (ud.idx < ud.max) {
+		cstack.buf[ud.idx] = 0;
+	}
+	p->context = (uintptr_t) &cstack;
+}
+
 struct cgoTracebackArg {
 	uintptr_t  context;
 	uintptr_t  sigContext;
@@ -68,9 +103,13 @@ void cgoTraceback(void* parg) {
 	struct cgoTracebackArg* arg = (struct cgoTracebackArg*)(parg);
 	struct unwind_data ud;
 
-	// We can only unwind the current stack.
 	if (arg->context != 0) {
-		arg->buf[0] = 0;
+		struct cgoCallStack *cs = (struct cgoCallStack *)(arg->context);
+		int n = CGO_CALL_STACK_SIZE;
+		if (n > arg->max) {
+			n = arg->max;
+		}
+		memcpy(arg->buf, cs->buf, n * sizeof(uintptr_t));
 		return;
 	}
 

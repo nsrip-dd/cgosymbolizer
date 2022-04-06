@@ -12,6 +12,7 @@ package cgosymbolizer
 
 // extern void cgoSymbolizerInit(char*);
 // extern void cgoTraceback(void*);
+// extern void cgoContext(void*);
 // extern void cgoSymbolizer(void*);
 import "C"
 
@@ -23,5 +24,5 @@ import (
 
 func init() {
 	C.cgoSymbolizerInit(C.CString(os.Args[0]))
-	runtime.SetCgoTraceback(0, unsafe.Pointer(C.cgoTraceback), nil, unsafe.Pointer(C.cgoSymbolizer))
+	runtime.SetCgoTraceback(0, unsafe.Pointer(C.cgoTraceback), unsafe.Pointer(C.cgoContext), unsafe.Pointer(C.cgoSymbolizer))
 }
